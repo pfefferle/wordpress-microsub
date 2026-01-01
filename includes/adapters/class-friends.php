@@ -181,23 +181,10 @@ class Friends extends Adapter {
 	 * @return array Associative array of format slug => format name.
 	 */
 	protected function get_post_formats() {
-		$friends = $this->get_friends();
+		// Use WordPress core format strings with 'standard' added.
+		$formats = array( 'standard' => \__( 'Standard', 'microsub' ) );
 
-		// Use Friends' plural strings for format names.
-		$formats = array(
-			'standard' => $friends ? $friends->get_post_format_plural_string( 'standard', 0 ) : \__( 'Posts', 'microsub' ),
-			'status'   => $friends ? $friends->get_post_format_plural_string( 'status', 0 ) : \__( 'Statuses', 'microsub' ),
-			'image'    => $friends ? $friends->get_post_format_plural_string( 'image', 0 ) : \__( 'Images', 'microsub' ),
-			'video'    => $friends ? $friends->get_post_format_plural_string( 'video', 0 ) : \__( 'Videos', 'microsub' ),
-			'audio'    => $friends ? $friends->get_post_format_plural_string( 'audio', 0 ) : \__( 'Audio', 'microsub' ),
-			'link'     => $friends ? $friends->get_post_format_plural_string( 'link', 0 ) : \__( 'Links', 'microsub' ),
-			'quote'    => $friends ? $friends->get_post_format_plural_string( 'quote', 0 ) : \__( 'Quotes', 'microsub' ),
-			'gallery'  => $friends ? $friends->get_post_format_plural_string( 'gallery', 0 ) : \__( 'Galleries', 'microsub' ),
-			'aside'    => $friends ? $friends->get_post_format_plural_string( 'aside', 0 ) : \__( 'Asides', 'microsub' ),
-			'chat'     => $friends ? $friends->get_post_format_plural_string( 'chat', 0 ) : \__( 'Chats', 'microsub' ),
-		);
-
-		return $formats;
+		return \array_merge( $formats, \get_post_format_strings() );
 	}
 
 	/**

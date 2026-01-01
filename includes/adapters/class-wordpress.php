@@ -82,6 +82,7 @@ class WordPress extends Adapter {
 
 		$events     = $this->get_events_items( $limit );
 		$combined   = \array_merge( $news_items, $events );
+		$combined   = $this->dedupe_items_by_id( $combined );
 		$combined   = $this->sort_items_by_date( $combined );
 		$result['items'] = \array_merge( $result['items'], \array_slice( $combined, 0, $limit ) );
 
@@ -140,7 +141,8 @@ class WordPress extends Adapter {
 			require_once ABSPATH . WPINC . '/feed.php';
 		}
 
-		$feed = \fetch_feed( $this->news_feed );
+		$feed_url = $this->get_news_feed_url();
+		$feed     = \fetch_feed( $feed_url );
 
 		if ( \is_wp_error( $feed ) ) {
 			return array();
@@ -170,6 +172,24 @@ class WordPress extends Adapter {
 	}
 
 	/**
+	 * Resolve the localized news feed URL based on the site locale.
+	 *
+	 * Mirrors the dashboard news widget behavior by using locale-specific domains when available.
+	 *
+	 * @return string
+	 */
+	protected function get_news_feed_url() {
+		$locale = \function_exists( 'get_locale' ) ? \get_locale() : 'en_US';
+
+		if ( empty( $locale ) || 'en_US' === $locale ) {
+			return $this->news_feed;
+		}
+
+		$subdomain = \strtolower( \str_replace( '_', '-', $locale ) );
+		return 'https://' . $subdomain . '.wordpress.org/news/feed/';
+	}
+
+	/**
 	 * Read WordPress community events.
 	 *
 	 * @param int $limit Maximum items to return.
@@ -184,9 +204,12 @@ class WordPress extends Adapter {
 			return array();
 		}
 
+		$user_id = \get_current_user_id();
+
 		$events_response = \wp_get_community_events(
 			array(
 				'number' => $limit,
+				'location' => $this->get_events_location( $user_id ),
 			)
 		);
 
@@ -215,6 +238,32 @@ class WordPress extends Adapter {
 	}
 
 	/**
+	 * Resolve the community events location (user preference or filtered override).
+	 *
+	 * @param int $user_id Current user ID.
+	 * @return array Location array as accepted by wp_get_community_events.
+	 */
+	protected function get_events_location( $user_id ) {
+		$location = array();
+
+		if ( $user_id ) {
+			$user_location = \get_user_option( 'community-events-location', $user_id );
+
+			if ( \is_array( $user_location ) ) {
+				$location = $user_location;
+			}
+		}
+
+		/**
+		 * Filter the location used for WordPress Events.
+		 *
+		 * @param array $location Location array.
+		 * @param int   $user_id  Current user ID.
+		 */
+		return \apply_filters( 'microsub_events_location', $location, $user_id );
+	}
+
+	/**
 	 * Sort items by published date (newest first).
 	 *
 	 * @param array $items Items to sort.
@@ -231,5 +280,32 @@ class WordPress extends Adapter {
 		);
 
 		return $items;
+	}
+
+	/**
+	 * Deduplicate items by their _id key.
+	 *
+	 * @param array $items Items to filter.
+	 * @return array
+	 */
+	protected function dedupe_items_by_id( $items ) {
+		$unique = array();
+		$seen   = array();
+
+		foreach ( $items as $item ) {
+			$id = isset( $item['_id'] ) ? $item['_id'] : null;
+
+			if ( $id && isset( $seen[ $id ] ) ) {
+				continue;
+			}
+
+			if ( $id ) {
+				$seen[ $id ] = true;
+			}
+
+			$unique[] = $item;
+		}
+
+		return $unique;
 	}
 }

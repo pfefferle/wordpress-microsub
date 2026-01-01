@@ -88,8 +88,34 @@ class Friends extends Adapter {
 			return false;
 		}
 
-		$feed = \Friends\User_Feed::get_by_url( $url );
+		$feed = $this->get_feed_by_url( $url );
 		return ! empty( $feed );
+	}
+
+	/**
+	 * Find a user feed by URL.
+	 *
+	 * @param string $url The feed URL to find.
+	 * @return \Friends\User_Feed|null The feed or null if not found.
+	 */
+	protected function get_feed_by_url( $url ) {
+		$friend_users = \Friends\User_Query::all_friends_subscriptions();
+
+		foreach ( $friend_users->get_results() as $friend_user ) {
+			if ( ! $friend_user instanceof \Friends\User ) {
+				continue;
+			}
+
+			$user_feeds = $friend_user->get_active_feeds();
+
+			foreach ( $user_feeds as $user_feed ) {
+				if ( $user_feed->get_url() === $url ) {
+					return $user_feed;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -522,16 +548,11 @@ class Friends extends Adapter {
 			return $result;
 		}
 
-		// Check if we own this feed.
-		if ( ! $this->owns_feed( $url ) ) {
-			return $result; // Pass to next adapter.
-		}
-
 		// Find the feed by URL.
-		$feed = \Friends\User_Feed::get_by_url( $url );
+		$feed = $this->get_feed_by_url( $url );
 
 		if ( ! $feed ) {
-			return false;
+			return $result; // Pass to next adapter.
 		}
 
 		$friend_user = $feed->get_friend_user();

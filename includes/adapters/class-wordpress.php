@@ -419,66 +419,45 @@ class WordPress extends Adapter {
 	}
 
 	/**
-	 * Get custom dashboard RSS widgets.
+	 * Get custom dashboard RSS feeds.
 	 *
-	 * Collects feeds from:
-	 * 1. The 'microsub_dashboard_feeds' filter (for plugins to register their feeds)
-	 * 2. The 'dashboard_widget_options' option (for user-added RSS widgets)
+	 * Collects feeds from the 'microsub_dashboard_feeds' filter.
+	 * Plugins can use this to expose their dashboard RSS widgets.
 	 *
 	 * @return array
 	 */
 	protected function get_rss_widgets() {
-		$widgets = array();
-
 		/**
 		 * Filter to register dashboard RSS feeds with Microsub.
 		 *
 		 * Plugins can use this to expose their dashboard RSS widgets.
 		 *
+		 * Example:
+		 * add_filter( 'microsub_dashboard_feeds', function( $feeds ) {
+		 *     $feeds[] = array(
+		 *         'id'   => 'my_plugin_news',
+		 *         'name' => __( 'My Plugin News', 'my-plugin' ),
+		 *         'url'  => 'https://example.com/feed/',
+		 *     );
+		 *     return $feeds;
+		 * } );
+		 *
 		 * @param array $feeds Array of feeds, each with 'id', 'name', and 'url' keys.
 		 */
-		$plugin_feeds = \apply_filters( 'microsub_dashboard_feeds', array() );
+		$feeds = \apply_filters( 'microsub_dashboard_feeds', array() );
 
-		if ( \is_array( $plugin_feeds ) ) {
-			foreach ( $plugin_feeds as $feed ) {
-				if ( ! empty( $feed['id'] ) && ! empty( $feed['url'] ) ) {
-					$widgets[] = array(
-						'id'   => $feed['id'],
-						'name' => ! empty( $feed['name'] ) ? $feed['name'] : $feed['id'],
-						'url'  => $feed['url'],
-					);
-				}
-			}
+		if ( ! \is_array( $feeds ) ) {
+			return array();
 		}
 
-		// Also check dashboard_widget_options for user-added RSS widgets.
-		$options = \get_option( 'dashboard_widget_options', array() );
+		$widgets = array();
 
-		if ( \is_array( $options ) ) {
-			foreach ( $options as $widget_id => $settings ) {
-				if ( ! \is_array( $settings ) ) {
-					continue;
-				}
-
-				// Check for feed URL in common keys.
-				$url = null;
-				if ( ! empty( $settings['url'] ) ) {
-					$url = $settings['url'];
-				} elseif ( ! empty( $settings['link'] ) && \filter_var( $settings['link'], \FILTER_VALIDATE_URL ) ) {
-					// 'link' is sometimes the feed URL in older widgets.
-					$url = $settings['link'];
-				}
-
-				if ( ! $url ) {
-					continue;
-				}
-
-				$title = ! empty( $settings['title'] ) ? $settings['title'] : $widget_id;
-
+		foreach ( $feeds as $feed ) {
+			if ( ! empty( $feed['id'] ) && ! empty( $feed['url'] ) ) {
 				$widgets[] = array(
-					'id'   => $widget_id,
-					'name' => $title,
-					'url'  => $url,
+					'id'   => $feed['id'],
+					'name' => ! empty( $feed['name'] ) ? $feed['name'] : $feed['id'],
+					'url'  => $feed['url'],
 				);
 			}
 		}

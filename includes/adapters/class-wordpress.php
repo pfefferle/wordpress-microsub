@@ -38,6 +38,13 @@ class WordPress extends Adapter {
 	protected $news_feed = 'https://wordpress.org/news/feed/';
 
 	/**
+	 * Cached dashboard RSS widgets.
+	 *
+	 * @var array|null
+	 */
+	protected $rss_widgets = null;
+
+	/**
 	 * Get list of channels.
 	 *
 	 * @param array $channels Current channels array from other adapters.
@@ -50,15 +57,12 @@ class WordPress extends Adapter {
 			'name' => \__( 'WordPress Events and News', 'microsub' ),
 		);
 
-		$channels[] = array(
-			'uid'  => 'wp-news',
-			'name' => \__( 'WordPress News', 'microsub' ),
-		);
-
-		$channels[] = array(
-			'uid'  => 'wp-events',
-			'name' => \__( 'WordPress Events', 'microsub' ),
-		);
+		foreach ( $this->get_rss_widgets() as $widget ) {
+			$channels[] = array(
+				'uid'  => 'wp-rss-' . $widget['id'],
+				'name' => $widget['name'],
+			);
+		}
 
 		return $channels;
 	}
@@ -72,30 +76,23 @@ class WordPress extends Adapter {
 	 * @return array Timeline data with 'items' and optional 'paging'.
 	 */
 	public function get_timeline( $result, $channel, $args ) {
-		if ( 'wp-dashboard' !== $channel && 'wp-news' !== $channel && 'wp-events' !== $channel ) {
-			return $result;
-		}
-
 		$limit = isset( $args['limit'] ) ? \absint( $args['limit'] ) : 20;
 
-		$news_items = $this->get_news_items( $limit );
-
-		if ( 'wp-news' === $channel ) {
-			$result['items'] = \array_merge( $result['items'], $news_items );
+		if ( \str_starts_with( $channel, 'wp-rss-' ) ) {
+			$feed_url = $this->get_rss_channel_feed( $channel );
+			if ( $feed_url ) {
+				$result['items'] = \array_merge( $result['items'], $this->get_feed_items( $feed_url, $limit, $channel ) );
+			}
 			return $result;
 		}
 
-		$events = $this->get_events_items( $limit );
-
-		if ( 'wp-events' === $channel ) {
-			$result['items'] = \array_merge( $result['items'], $events );
-			return $result;
+		if ( 'wp-dashboard' === $channel ) {
+			$news_items = $this->get_news_items( $limit );
+			$events     = $this->get_events_items( $limit );
+			$combined   = $this->dedupe_items_by_id( \array_merge( $news_items, $events ) );
+			$combined   = $this->sort_items_by_date( $combined );
+			$result['items'] = \array_merge( $result['items'], \array_slice( $combined, 0, $limit ) );
 		}
-
-		$combined   = \array_merge( $news_items, $events );
-		$combined   = $this->dedupe_items_by_id( $combined );
-		$combined   = $this->sort_items_by_date( $combined );
-		$result['items'] = \array_merge( $result['items'], \array_slice( $combined, 0, $limit ) );
 
 		return $result;
 	}
@@ -217,25 +214,17 @@ class WordPress extends Adapter {
 
 		$user_id = \get_current_user_id();
 
-		$locations = $this->build_event_locations( $user_id );
-		$response  = null;
+		$location = $this->get_events_location( $user_id );
+		$response = \wp_get_community_events(
+			array(
+				'number'   => $limit,
+				'location' => $location,
+			)
+		);
 
-		foreach ( $locations as $location ) {
-			$response = \wp_get_community_events(
-				array(
-					'number'   => $limit,
-					'location' => $location,
-				)
-			);
-
-			if ( ! \is_wp_error( $response ) && ! empty( $response['events'] ) ) {
-				break;
-			}
-		}
-
-		// Fallback: call the events API directly if no result yet.
 		if ( \is_wp_error( $response ) || empty( $response['events'] ) ) {
-			$response = $this->fetch_events_via_api( $limit, $locations );
+			// Simple fallback: try the public API once using whatever location data we have.
+			$response = $this->fetch_events_via_api( $limit, $location );
 		}
 
 		if ( \is_wp_error( $response ) || empty( $response['events'] ) ) {
@@ -269,142 +258,8 @@ class WordPress extends Adapter {
 	 * @return array[] Array of location arrays.
 	 */
 	protected function build_event_locations( $user_id ) {
-		$locations = array();
-
-		// User-specified location from dashboard widget.
-		if ( $user_id ) {
-			$user_location = \get_user_option( 'community-events-location', $user_id );
-			if ( \is_array( $user_location ) && ! empty( $user_location ) ) {
-				$locations[] = $user_location;
-			}
-		}
-
-		// Geo-IP fallback used by core.
-		if ( \function_exists( 'wp_get_user_location' ) ) {
-			$geo = \wp_get_user_location();
-			if ( \is_array( $geo ) && ! empty( $geo ) ) {
-				$locations[] = $geo;
-			}
-		}
-
-		// Locale-based country fallback (e.g., de_DE -> DE).
-		$locale_country = $this->get_locale_country();
-		if ( $locale_country ) {
-			$locations[] = array( 'country' => $locale_country );
-		}
-
-		// Final hard fallback to US to ensure some events show.
-		$locations[] = array( 'country' => 'US' );
-
-		/**
-		 * Filter the list of locations to try for events.
-		 *
-		 * @param array[] $locations Location arrays.
-		 * @param int     $user_id   Current user ID.
-		 */
-		$locations = \apply_filters( 'microsub_events_locations', $locations, $user_id );
-
-		// Remove duplicates.
-		$unique = array();
-		$seen   = array();
-		foreach ( $locations as $location ) {
-			$key = \wp_json_encode( $location );
-			if ( isset( $seen[ $key ] ) ) {
-				continue;
-			}
-			$seen[ $key ]   = true;
-			$unique[] = $location;
-		}
-
-		return $unique;
-	}
-
-	/**
-	 * Direct API fallback to fetch events from api.wordpress.org.
-	 *
-	 * @param int   $limit     Max events.
-	 * @param array $locations Locations to try.
-	 * @return array|\WP_Error Response array with 'events' or WP_Error.
-	 */
-	protected function fetch_events_via_api( $limit, $locations ) {
-		$ip      = isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '';
-		$locale  = \function_exists( 'get_user_locale' ) ? \get_user_locale() : 'en_US';
-		$tz      = \function_exists( 'wp_timezone_string' ) ? \wp_timezone_string() : '';
-		$base    = 'https://api.wordpress.org/events/1.0/';
-		$params  = array(
-			'number'   => $limit,
-			'locale'   => $locale,
-			'timezone' => $tz,
-		);
-
-		// Try each location; if none, fall back to IP-only query.
-		if ( empty( $locations ) ) {
-			$locations[] = array();
-		}
-
-		foreach ( $locations as $location ) {
-			$query_args = $params;
-
-			if ( ! empty( $location['latitude'] ) && ! empty( $location['longitude'] ) ) {
-				$query_args['latitude']  = $location['latitude'];
-				$query_args['longitude'] = $location['longitude'];
-			} elseif ( ! empty( $location['city'] ) ) {
-				$query_args['location'] = $location['city'];
-				if ( ! empty( $location['country'] ) ) {
-					$query_args['country'] = $location['country'];
-				}
-			} elseif ( ! empty( $location['country'] ) ) {
-				$query_args['country'] = $location['country'];
-			} elseif ( $ip ) {
-				$query_args['ip'] = $ip;
-			}
-
-			if ( $ip && ! isset( $query_args['ip'] ) ) {
-				$query_args['ip'] = $ip;
-			}
-
-			$url      = \add_query_arg( array_filter( $query_args ), $base );
-			$response = \wp_remote_get( $url, array( 'timeout' => 8 ) );
-
-			if ( \is_wp_error( $response ) ) {
-				continue;
-			}
-
-			$code = \wp_remote_retrieve_response_code( $response );
-			if ( 200 !== (int) $code ) {
-				continue;
-			}
-
-			$body = \wp_remote_retrieve_body( $response );
-			$data = \json_decode( $body, true );
-
-			if ( ! empty( $data['events'] ) && \is_array( $data['events'] ) ) {
-				return array( 'events' => $data['events'] );
-			}
-		}
-
-		return array( 'events' => array() );
-	}
-
-	/**
-	 * Return the country code inferred from the site locale.
-	 *
-	 * @return string|null
-	 */
-	protected function get_locale_country() {
-		if ( ! \function_exists( 'get_locale' ) ) {
-			return null;
-		}
-
-		$locale = \get_locale();
-		if ( empty( $locale ) || false === \strpos( $locale, '_' ) ) {
-			return null;
-		}
-
-		$parts = \explode( '_', $locale );
-		$country = isset( $parts[1] ) ? \strtoupper( $parts[1] ) : null;
-
-		return $country ?: null;
+		// Deprecated in favor of get_events_location + fetch_events_via_api (single location).
+		return array();
 	}
 
 	/**
@@ -451,5 +306,204 @@ class WordPress extends Adapter {
 		}
 
 		return $unique;
+	}
+
+	/**
+	 * Resolve the community events location (user preference or filtered override).
+	 *
+	 * @param int $user_id Current user ID.
+	 * @return array Location array as accepted by wp_get_community_events.
+	 */
+	protected function get_events_location( $user_id ) {
+		$location = array();
+
+		if ( $user_id ) {
+			$user_location = \get_user_option( 'community-events-location', $user_id );
+
+			if ( \is_array( $user_location ) ) {
+				$location = $user_location;
+			}
+		}
+
+		if ( empty( $location ) && \function_exists( 'wp_get_user_location' ) ) {
+			// Falls back to the same geo-IP lookup core uses for the dashboard widget.
+			$location = \wp_get_user_location();
+		}
+
+		/**
+		 * Filter the location used for WordPress Events.
+		 *
+		 * @param array $location Location array.
+		 * @param int   $user_id  Current user ID.
+		 */
+		return \apply_filters( 'microsub_events_location', $location, $user_id );
+	}
+
+	/**
+	 * Direct API fallback to fetch events from api.wordpress.org.
+	 *
+	 * @param int   $limit    Max events.
+	 * @param array $location Location to try.
+	 * @return array|\WP_Error Response array with 'events' or WP_Error.
+	 */
+	protected function fetch_events_via_api( $limit, $location ) {
+		$ip      = isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '';
+		$locale  = \function_exists( 'get_user_locale' ) ? \get_user_locale() : 'en_US';
+		$tz      = \function_exists( 'wp_timezone_string' ) ? \wp_timezone_string() : '';
+		$base    = 'https://api.wordpress.org/events/1.0/';
+		$params  = array(
+			'number'   => $limit,
+			'locale'   => $locale,
+			'timezone' => $tz,
+		);
+
+		$query_args = $params;
+
+		if ( ! empty( $location['latitude'] ) && ! empty( $location['longitude'] ) ) {
+			$query_args['latitude']  = $location['latitude'];
+			$query_args['longitude'] = $location['longitude'];
+		} elseif ( ! empty( $location['city'] ) ) {
+			$query_args['location'] = $location['city'];
+			if ( ! empty( $location['country'] ) ) {
+				$query_args['country'] = $location['country'];
+			}
+		} elseif ( ! empty( $location['country'] ) ) {
+			$query_args['country'] = $location['country'];
+		} elseif ( $ip ) {
+			$query_args['ip'] = $ip;
+		}
+
+		if ( $ip && ! isset( $query_args['ip'] ) ) {
+			$query_args['ip'] = $ip;
+		}
+
+		$url      = \add_query_arg( array_filter( $query_args ), $base );
+		$response = \wp_remote_get( $url, array( 'timeout' => 8 ) );
+
+		if ( \is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		$code = \wp_remote_retrieve_response_code( $response );
+		if ( 200 !== (int) $code ) {
+			return new \WP_Error( 'events_api_error', 'Events API returned non-200 status.' );
+		}
+
+		$body = \wp_remote_retrieve_body( $response );
+		$data = \json_decode( $body, true );
+
+		if ( empty( $data['events'] ) || ! \is_array( $data['events'] ) ) {
+			return new \WP_Error( 'events_api_empty', 'Events API returned no events.' );
+		}
+
+		return array( 'events' => $data['events'] );
+	}
+
+	/**
+	 * Get custom dashboard RSS widgets that use wp_widget_rss_output.
+	 *
+	 * @return array
+	 */
+	protected function get_rss_widgets() {
+		if ( null !== $this->rss_widgets ) {
+			return $this->rss_widgets;
+		}
+
+		if ( ! \is_admin() ) {
+			// Ensure dashboard widgets are registered.
+			\do_action( 'wp_dashboard_setup' );
+		}
+
+		global $wp_meta_boxes;
+
+		$this->rss_widgets = array();
+		$options           = \get_option( 'dashboard_widget_options', array() );
+
+		if ( empty( $wp_meta_boxes['dashboard'] ) ) {
+			return $this->rss_widgets;
+		}
+
+		foreach ( $wp_meta_boxes['dashboard'] as $priority => $boxes ) {
+			foreach ( $boxes as $box ) {
+				foreach ( $box as $widget_id => $widget ) {
+					$callback = isset( $widget['callback'] ) ? $widget['callback'] : null;
+
+					if ( is_array( $callback ) && isset( $callback[1] ) && 'wp_widget_rss_output' === $callback[1] ) {
+						$title = isset( $widget['title'] ) ? $widget['title'] : $widget['id'];
+						$url   = $options[ $widget_id ]['url'] ?? '';
+
+						if ( $url ) {
+							$this->rss_widgets[] = array(
+								'id'   => $widget_id,
+								'name' => $title,
+								'url'  => $url,
+							);
+						}
+					}
+				}
+			}
+		}
+
+		return $this->rss_widgets;
+	}
+
+	/**
+	 * Map RSS channel UID to feed URL.
+	 *
+	 * @param string $uid Channel UID.
+	 * @return string|null
+	 */
+	protected function get_rss_channel_feed( $uid ) {
+		$widgets = $this->get_rss_widgets();
+
+		foreach ( $widgets as $widget ) {
+			if ( 'wp-rss-' . $widget['id'] === $uid ) {
+				return $widget['url'];
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Read generic RSS/Atom feed items.
+	 *
+	 * @param string $feed_url Feed URL.
+	 * @param int    $limit    Max items.
+	 * @param string $channel  Channel UID used for IDs.
+	 * @return array
+	 */
+	protected function get_feed_items( $feed_url, $limit, $channel ) {
+		if ( ! \function_exists( 'fetch_feed' ) ) {
+			require_once ABSPATH . WPINC . '/feed.php';
+		}
+
+		$feed = \fetch_feed( $feed_url );
+
+		if ( \is_wp_error( $feed ) ) {
+			return array();
+		}
+
+		$max   = $feed->get_item_quantity( $limit );
+		$items = $feed->get_items( 0, $max );
+		$list  = array();
+
+		foreach ( $items as $item ) {
+			$url     = $item->get_permalink();
+			$content = $item->get_content();
+			$list[]  = array(
+				'type'      => 'entry',
+				'_id'       => $channel . '-' . \md5( $url ),
+				'name'      => $item->get_title(),
+				'url'       => $url,
+				'published' => $item->get_date( \DATE_ATOM ),
+				'content'   => array(
+					'html' => $content,
+					'text' => \wp_strip_all_tags( $content ),
+				),
+			);
+		}
+
+		return $list;
 	}
 }

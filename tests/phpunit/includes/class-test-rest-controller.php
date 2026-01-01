@@ -87,8 +87,6 @@ class Test_Rest_Controller extends WP_UnitTestCase {
 		$this->assertNotEmpty( $data['channels'] );
 		$uids = wp_list_pluck( $data['channels'], 'uid' );
 		$this->assertTrue( in_array( 'wp-dashboard', $uids, true ), 'Expected wp-dashboard channel' );
-		$this->assertTrue( in_array( 'wp-news', $uids, true ), 'Expected wp-news channel' );
-		$this->assertTrue( in_array( 'wp-events', $uids, true ), 'Expected wp-events channel' );
 	}
 
 	/**

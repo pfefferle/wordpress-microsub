@@ -233,6 +233,11 @@ class WordPress extends Adapter {
 			}
 		}
 
+		// Fallback: call the events API directly if no result yet.
+		if ( \is_wp_error( $response ) || empty( $response['events'] ) ) {
+			$response = $this->fetch_events_via_api( $limit, $locations );
+		}
+
 		if ( \is_wp_error( $response ) || empty( $response['events'] ) ) {
 			return array();
 		}
@@ -312,6 +317,73 @@ class WordPress extends Adapter {
 		}
 
 		return $unique;
+	}
+
+	/**
+	 * Direct API fallback to fetch events from api.wordpress.org.
+	 *
+	 * @param int   $limit     Max events.
+	 * @param array $locations Locations to try.
+	 * @return array|\WP_Error Response array with 'events' or WP_Error.
+	 */
+	protected function fetch_events_via_api( $limit, $locations ) {
+		$ip      = isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '';
+		$locale  = \function_exists( 'get_user_locale' ) ? \get_user_locale() : 'en_US';
+		$tz      = \function_exists( 'wp_timezone_string' ) ? \wp_timezone_string() : '';
+		$base    = 'https://api.wordpress.org/events/1.0/';
+		$params  = array(
+			'number'   => $limit,
+			'locale'   => $locale,
+			'timezone' => $tz,
+		);
+
+		// Try each location; if none, fall back to IP-only query.
+		if ( empty( $locations ) ) {
+			$locations[] = array();
+		}
+
+		foreach ( $locations as $location ) {
+			$query_args = $params;
+
+			if ( ! empty( $location['latitude'] ) && ! empty( $location['longitude'] ) ) {
+				$query_args['latitude']  = $location['latitude'];
+				$query_args['longitude'] = $location['longitude'];
+			} elseif ( ! empty( $location['city'] ) ) {
+				$query_args['location'] = $location['city'];
+				if ( ! empty( $location['country'] ) ) {
+					$query_args['country'] = $location['country'];
+				}
+			} elseif ( ! empty( $location['country'] ) ) {
+				$query_args['country'] = $location['country'];
+			} elseif ( $ip ) {
+				$query_args['ip'] = $ip;
+			}
+
+			if ( $ip && ! isset( $query_args['ip'] ) ) {
+				$query_args['ip'] = $ip;
+			}
+
+			$url      = \add_query_arg( array_filter( $query_args ), $base );
+			$response = \wp_remote_get( $url, array( 'timeout' => 8 ) );
+
+			if ( \is_wp_error( $response ) ) {
+				continue;
+			}
+
+			$code = \wp_remote_retrieve_response_code( $response );
+			if ( 200 !== (int) $code ) {
+				continue;
+			}
+
+			$body = \wp_remote_retrieve_body( $response );
+			$data = \json_decode( $body, true );
+
+			if ( ! empty( $data['events'] ) && \is_array( $data['events'] ) ) {
+				return array( 'events' => $data['events'] );
+			}
+		}
+
+		return array( 'events' => array() );
 	}
 
 	/**

@@ -38,6 +38,13 @@ class WordPress extends Adapter {
 	protected $news_feed = 'https://wordpress.org/news/feed/';
 
 	/**
+	 * Planet WordPress feed URL.
+	 *
+	 * @var string
+	 */
+	protected $planet_feed = 'https://planet.wordpress.org/feed/';
+
+	/**
 	 * Cached dashboard RSS widgets.
 	 *
 	 * @var array|null
@@ -55,6 +62,11 @@ class WordPress extends Adapter {
 		$channels[] = array(
 			'uid'  => 'wp-dashboard',
 			'name' => \__( 'WordPress Events and News', 'microsub' ),
+		);
+
+		$channels[] = array(
+			'uid'  => 'wp-planet',
+			'name' => \__( 'Planet WordPress', 'microsub' ),
 		);
 
 		foreach ( $this->get_rss_widgets() as $widget ) {
@@ -83,6 +95,11 @@ class WordPress extends Adapter {
 			if ( $feed_url ) {
 				$result['items'] = \array_merge( $result['items'], $this->get_feed_items( $feed_url, $limit, $channel ) );
 			}
+			return $result;
+		}
+
+		if ( 'wp-planet' === $channel ) {
+			$result['items'] = \array_merge( $result['items'], $this->get_feed_items( $this->planet_feed, $limit, $channel ) );
 			return $result;
 		}
 
@@ -412,21 +429,36 @@ class WordPress extends Adapter {
 		$this->rss_widgets = array();
 		$options           = \get_option( 'dashboard_widget_options', array() );
 
+		if ( ! \is_array( $options ) ) {
+			return $this->rss_widgets;
+		}
+
 		// Derive RSS widgets directly from stored options (title/url) even in REST context.
-		if ( ! empty( $options ) ) {
-			foreach ( $options as $widget_id => $settings ) {
-				if ( empty( $settings['url'] ) ) {
-					continue;
-				}
-
-				$title = $settings['title'] ?? $widget_id;
-
-				$this->rss_widgets[] = array(
-					'id'   => $widget_id,
-					'name' => $title,
-					'url'  => $settings['url'],
-				);
+		foreach ( $options as $widget_id => $settings ) {
+			if ( ! \is_array( $settings ) ) {
+				continue;
 			}
+
+			// Check for feed URL in common keys.
+			$url = null;
+			if ( ! empty( $settings['url'] ) ) {
+				$url = $settings['url'];
+			} elseif ( ! empty( $settings['link'] ) && \filter_var( $settings['link'], \FILTER_VALIDATE_URL ) ) {
+				// 'link' is sometimes the feed URL in older widgets.
+				$url = $settings['link'];
+			}
+
+			if ( ! $url ) {
+				continue;
+			}
+
+			$title = ! empty( $settings['title'] ) ? $settings['title'] : $widget_id;
+
+			$this->rss_widgets[] = array(
+				'id'   => $widget_id,
+				'name' => $title,
+				'url'  => $url,
+			);
 		}
 
 		return $this->rss_widgets;

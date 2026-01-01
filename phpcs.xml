@@ -26,6 +26,10 @@
 		<exclude-pattern>*/includes/adapters/*</exclude-pattern>
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>
+	<!-- Base adapter defines interface signatures; default implementations don't use params -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude-pattern>*/includes/class-adapter.php</exclude-pattern>
+	</rule>
 	<rule ref="Generic.Formatting.MultipleStatementAlignment">
 		<exclude-pattern>*/tests/*</exclude-pattern>
 	</rule>

@@ -21,7 +21,7 @@ class WordPress extends Adapter {
 	 *
 	 * @var string
 	 */
-	protected $id = 'wordpress';
+	protected $id = 'WordPress';
 
 	/**
 	 * Adapter name.
@@ -87,10 +87,10 @@ class WordPress extends Adapter {
 		}
 
 		if ( 'wp-dashboard' === $channel ) {
-			$news_items = $this->get_news_items( $limit );
-			$events     = $this->get_events_items( $limit );
-			$combined   = $this->dedupe_items_by_id( \array_merge( $news_items, $events ) );
-			$combined   = $this->sort_items_by_date( $combined );
+			$news_items      = $this->get_news_items( $limit );
+			$events          = $this->get_events_items( $limit );
+			$combined        = $this->dedupe_items_by_id( \array_merge( $news_items, $events ) );
+			$combined        = $this->sort_items_by_date( $combined );
 			$result['items'] = \array_merge( $result['items'], \array_slice( $combined, 0, $limit ) );
 		}
 
@@ -234,9 +234,9 @@ class WordPress extends Adapter {
 		$items = array();
 
 		foreach ( $response['events'] as $event ) {
-			$url       = $event['url'] ?? '';
-			$time      = $event['date'] ?? ( $event['start'] ?? '' );
-			$items[]   = array(
+			$url     = $event['url'] ?? '';
+			$time    = $event['date'] ?? ( $event['start'] ?? '' );
+			$items[] = array(
 				'type'      => 'entry',
 				'_id'       => 'event-' . \md5( $url ?: ( $event['title'] ?? '' ) . $time ),
 				'name'      => $event['title'] ?? '',
@@ -347,11 +347,11 @@ class WordPress extends Adapter {
 	 * @return array|\WP_Error Response array with 'events' or WP_Error.
 	 */
 	protected function fetch_events_via_api( $limit, $location ) {
-		$ip      = isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '';
-		$locale  = \function_exists( 'get_user_locale' ) ? \get_user_locale() : 'en_US';
-		$tz      = \function_exists( 'wp_timezone_string' ) ? \wp_timezone_string() : '';
-		$base    = 'https://api.wordpress.org/events/1.0/';
-		$params  = array(
+		$ip     = isset( $_SERVER['REMOTE_ADDR'] ) ? \sanitize_text_field( \wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$locale = \function_exists( 'get_user_locale' ) ? \get_user_locale() : 'en_US';
+		$tz     = \function_exists( 'wp_timezone_string' ) ? \wp_timezone_string() : '';
+		$base   = 'https://api.wordpress.org/events/1.0/';
+		$params = array(
 			'number'   => $limit,
 			'locale'   => $locale,
 			'timezone' => $tz,
@@ -409,38 +409,23 @@ class WordPress extends Adapter {
 			return $this->rss_widgets;
 		}
 
-		if ( ! \is_admin() ) {
-			// Ensure dashboard widgets are registered.
-			\do_action( 'wp_dashboard_setup' );
-		}
-
-		global $wp_meta_boxes;
-
 		$this->rss_widgets = array();
 		$options           = \get_option( 'dashboard_widget_options', array() );
 
-		if ( empty( $wp_meta_boxes['dashboard'] ) ) {
-			return $this->rss_widgets;
-		}
-
-		foreach ( $wp_meta_boxes['dashboard'] as $priority => $boxes ) {
-			foreach ( $boxes as $box ) {
-				foreach ( $box as $widget_id => $widget ) {
-					$callback = isset( $widget['callback'] ) ? $widget['callback'] : null;
-
-					if ( is_array( $callback ) && isset( $callback[1] ) && 'wp_widget_rss_output' === $callback[1] ) {
-						$title = isset( $widget['title'] ) ? $widget['title'] : $widget['id'];
-						$url   = $options[ $widget_id ]['url'] ?? '';
-
-						if ( $url ) {
-							$this->rss_widgets[] = array(
-								'id'   => $widget_id,
-								'name' => $title,
-								'url'  => $url,
-							);
-						}
-					}
+		// Derive RSS widgets directly from stored options (title/url) even in REST context.
+		if ( ! empty( $options ) ) {
+			foreach ( $options as $widget_id => $settings ) {
+				if ( empty( $settings['url'] ) ) {
+					continue;
 				}
+
+				$title = $settings['title'] ?? $widget_id;
+
+				$this->rss_widgets[] = array(
+					'id'   => $widget_id,
+					'name' => $title,
+					'url'  => $settings['url'],
+				);
 			}
 		}
 

@@ -409,38 +409,23 @@ class WordPress extends Adapter {
 			return $this->rss_widgets;
 		}
 
-		if ( ! \is_admin() ) {
-			// Ensure dashboard widgets are registered.
-			\do_action( 'wp_dashboard_setup' );
-		}
-
-		global $wp_meta_boxes;
-
 		$this->rss_widgets = array();
 		$options           = \get_option( 'dashboard_widget_options', array() );
 
-		if ( empty( $wp_meta_boxes['dashboard'] ) ) {
-			return $this->rss_widgets;
-		}
-
-		foreach ( $wp_meta_boxes['dashboard'] as $priority => $boxes ) {
-			foreach ( $boxes as $box ) {
-				foreach ( $box as $widget_id => $widget ) {
-					$callback = isset( $widget['callback'] ) ? $widget['callback'] : null;
-
-					if ( is_array( $callback ) && isset( $callback[1] ) && 'wp_widget_rss_output' === $callback[1] ) {
-						$title = isset( $widget['title'] ) ? $widget['title'] : $widget['id'];
-						$url   = $options[ $widget_id ]['url'] ?? '';
-
-						if ( $url ) {
-							$this->rss_widgets[] = array(
-								'id'   => $widget_id,
-								'name' => $title,
-								'url'  => $url,
-							);
-						}
-					}
+		// Derive RSS widgets directly from stored options (title/url) even in REST context.
+		if ( ! empty( $options ) ) {
+			foreach ( $options as $widget_id => $settings ) {
+				if ( empty( $settings['url'] ) ) {
+					continue;
 				}
+
+				$title = $settings['title'] ?? $widget_id;
+
+				$this->rss_widgets[] = array(
+					'id'   => $widget_id,
+					'name' => $title,
+					'url'  => $settings['url'],
+				);
 			}
 		}
 

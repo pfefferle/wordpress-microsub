@@ -38,7 +38,7 @@ class Friends extends Adapter {
 	 * @return bool
 	 */
 	public static function is_available() {
-		return \class_exists( '\Friends\Friends' );
+		return \defined( 'FRIENDS_VERSION' );
 	}
 
 	/**
@@ -95,6 +95,8 @@ class Friends extends Adapter {
 	/**
 	 * Get list of channels.
 	 *
+	 * Maps Friends' friend lists (taxonomy terms) to Microsub channels.
+	 *
 	 * @param array $channels Current channels array from other adapters.
 	 * @param int   $user_id  The user ID.
 	 * @return array Array of channels with 'uid' and 'name'.
@@ -104,19 +106,134 @@ class Friends extends Adapter {
 			return $channels;
 		}
 
-		// Add our channels to the existing list.
+		// Notifications channel.
 		$channels[] = array(
 			'uid'    => 'notifications',
 			'name'   => \__( 'Notifications', 'microsub' ),
 			'unread' => 0,
 		);
 
+		// Home channel (all posts).
 		$channels[] = array(
 			'uid'  => 'home',
 			'name' => \__( 'Home', 'microsub' ),
 		);
 
+		// Get friend lists as channels.
+		$friend_lists = \get_terms(
+			array(
+				'taxonomy'   => 'friend-list',
+				'hide_empty' => false,
+			)
+		);
+
+		if ( ! \is_wp_error( $friend_lists ) && ! empty( $friend_lists ) ) {
+			foreach ( $friend_lists as $list ) {
+				$channels[] = array(
+					'uid'  => 'list-' . $list->slug,
+					'name' => $list->name,
+				);
+			}
+		}
+
 		return $channels;
+	}
+
+	/**
+	 * Create a new channel.
+	 *
+	 * Creates a new friend list term.
+	 *
+	 * @param array|null $result  Current result or null.
+	 * @param string     $name    Channel name.
+	 * @param int        $user_id The user ID.
+	 * @return array|null Channel data on success.
+	 */
+	public function create_channel( $result, $name, $user_id ) {
+		if ( ! self::is_available() ) {
+			return $result;
+		}
+
+		$term = \wp_insert_term( $name, 'friend-list' );
+
+		if ( \is_wp_error( $term ) ) {
+			return $result;
+		}
+
+		$term_data = \get_term( $term['term_id'], 'friend-list' );
+
+		return array(
+			'uid'  => 'list-' . $term_data->slug,
+			'name' => $term_data->name,
+		);
+	}
+
+	/**
+	 * Update a channel.
+	 *
+	 * @param array|null $result  Current result or null.
+	 * @param string     $uid     Channel UID.
+	 * @param string     $name    New channel name.
+	 * @param int        $user_id The user ID.
+	 * @return array|null Updated channel data on success.
+	 */
+	public function update_channel( $result, $uid, $name, $user_id ) {
+		if ( ! self::is_available() ) {
+			return $result;
+		}
+
+		// Only handle list channels.
+		if ( ! str_starts_with( $uid, 'list-' ) ) {
+			return $result;
+		}
+
+		$slug = substr( $uid, 5 );
+		$term = \get_term_by( 'slug', $slug, 'friend-list' );
+
+		if ( ! $term ) {
+			return $result;
+		}
+
+		$updated = \wp_update_term( $term->term_id, 'friend-list', array( 'name' => $name ) );
+
+		if ( \is_wp_error( $updated ) ) {
+			return $result;
+		}
+
+		return array(
+			'uid'  => $uid,
+			'name' => $name,
+		);
+	}
+
+	/**
+	 * Delete a channel.
+	 *
+	 * @param bool|null $result  Current result or null.
+	 * @param string    $uid     Channel UID.
+	 * @param int       $user_id The user ID.
+	 * @return bool|null True on success.
+	 */
+	public function delete_channel( $result, $uid, $user_id ) {
+		if ( ! self::is_available() ) {
+			return $result;
+		}
+
+		// Only handle list channels.
+		if ( ! str_starts_with( $uid, 'list-' ) ) {
+			return $result;
+		}
+
+		$slug = substr( $uid, 5 );
+		$term = \get_term_by( 'slug', $slug, 'friend-list' );
+
+		if ( ! $term ) {
+			return $result;
+		}
+
+		$deleted = \wp_delete_term( $term->term_id, 'friend-list' );
+
+		return ! \is_wp_error( $deleted ) && $deleted;
 	}
 
 	/**
@@ -137,11 +254,6 @@ class Friends extends Adapter {
 			return $result;
 		}
 
-		// Only handle 'home' channel.
-		if ( 'home' !== $channel ) {
-			return $result;
-		}
-
 		$limit = isset( $args['limit'] ) ? \absint( $args['limit'] ) : 20;
 
 		$query_args = array(
@@ -151,6 +263,28 @@ class Friends extends Adapter {
 			'orderby'        => 'date',
 			'order'          => 'DESC',
 		);
+
+		// Filter by friend list if not home channel.
+		if ( str_starts_with( $channel, 'list-' ) ) {
+			$slug = substr( $channel, 5 );
+			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+
+			if ( ! $term ) {
+				return $result;
+			}
+
+			// Get friend users in this list.
+			$friend_users = \get_objects_in_term( $term->term_id, 'friend-list' );
+
+			if ( empty( $friend_users ) ) {
+				return $result;
+			}
+
+			$query_args['author__in'] = $friend_users;
+		} elseif ( 'home' !== $channel ) {
+			// Unknown channel, pass to next adapter.
+			return $result;
+		}
 
 		// Handle cursor-based pagination.
 		if ( ! empty( $args['after'] ) ) {
@@ -192,10 +326,14 @@ class Friends extends Adapter {
 			return $result;
 		}
 
-		// Get all friend users.
-		$friend_users = \Friends\User_Query::all_friends_subscriptions();
+		// Get friend users, optionally filtered by list.
+		$friend_users = $this->get_friend_users_for_channel( $channel );
 
-		foreach ( $friend_users->get_results() as $friend_user ) {
+		if ( null === $friend_users ) {
+			return $result; // Unknown channel.
+		}
+
+		foreach ( $friend_users as $friend_user ) {
 			if ( ! $friend_user instanceof \Friends\User ) {
 				continue;
 			}
@@ -226,6 +364,45 @@ class Friends extends Adapter {
 	}
 
 	/**
+	 * Get friend users for a channel.
+	 *
+	 * @param string $channel Channel UID.
+	 * @return array|null Array of friend users or null if unknown channel.
+	 */
+	protected function get_friend_users_for_channel( $channel ) {
+		if ( 'home' === $channel || 'notifications' === $channel ) {
+			$query = \Friends\User_Query::all_friends_subscriptions();
+			return $query->get_results();
+		}
+
+		if ( str_starts_with( $channel, 'list-' ) ) {
+			$slug = substr( $channel, 5 );
+			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+
+			if ( ! $term ) {
+				return array();
+			}
+
+			$user_ids = \get_objects_in_term( $term->term_id, 'friend-list' );
+
+			if ( empty( $user_ids ) ) {
+				return array();
+			}
+
+			$users = array();
+			foreach ( $user_ids as $user_id ) {
+				$user = new \Friends\User( $user_id );
+				if ( $user->has_cap( 'friend' ) || $user->has_cap( 'subscription' ) ) {
+					$users[] = $user;
+				}
+			}
+			return $users;
+		}
+
+		return null; // Unknown channel.
+	}
+
+	/**
 	 * Follow a URL.
 	 *
 	 * @param array|null $result  Current result or null.
@@ -249,6 +426,16 @@ class Friends extends Adapter {
 
 		if ( \is_wp_error( $friend_user ) ) {
 			return $result;
+		}
+
+		// If subscribing to a specific list channel, add to that list.
+		if ( str_starts_with( $channel, 'list-' ) ) {
+			$slug = substr( $channel, 5 );
+			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+
+			if ( $term ) {
+				\wp_set_object_terms( $friend_user->ID, $term->term_id, 'friend-list', true );
+			}
 		}
 
 		return array(
@@ -294,6 +481,7 @@ class Friends extends Adapter {
 
 		if ( \count( $user_feeds ) <= 1 ) {
 			// Delete the user if this is the only feed.
+			require_once ABSPATH . 'wp-admin/includes/user.php';
 			\wp_delete_user( $friend_user->ID );
 		} else {
 			// Just deactivate this feed.

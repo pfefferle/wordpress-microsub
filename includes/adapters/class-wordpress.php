@@ -206,12 +206,26 @@ class WordPress extends Adapter {
 
 		$user_id = \get_current_user_id();
 
+		$location = $this->get_events_location( $user_id );
+
 		$events_response = \wp_get_community_events(
 			array(
-				'number' => $limit,
-				'location' => $this->get_events_location( $user_id ),
+				'number'   => $limit,
+				'location' => $location,
 			)
 		);
+
+		if ( \is_wp_error( $events_response ) || empty( $events_response['events'] ) ) {
+			// If location was empty and the first call failed, try again with the default WP.org news locale.
+			if ( empty( $location ) ) {
+				$events_response = \wp_get_community_events(
+					array(
+						'number'   => $limit,
+						'location' => array( 'country' => 'US' ),
+					)
+				);
+			}
+		}
 
 		if ( \is_wp_error( $events_response ) || empty( $events_response['events'] ) ) {
 			return array();
@@ -252,6 +266,11 @@ class WordPress extends Adapter {
 			if ( \is_array( $user_location ) ) {
 				$location = $user_location;
 			}
+		}
+
+		if ( empty( $location ) && \function_exists( 'wp_get_user_location' ) ) {
+			// Falls back to the same geo-IP lookup core uses for the dashboard widget.
+			$location = \wp_get_user_location();
 		}
 
 		/**

@@ -8,6 +8,9 @@
 namespace Microsub\Adapters;
 
 use Microsub\Adapter;
+use Activitypub\Collection\Following;
+use Activitypub\Collection\Remote_Actors;
+use Activitypub\Collection\Posts;
 
 /**
  * ActivityPub Adapter
@@ -55,9 +58,9 @@ class ActivityPub extends Adapter {
 		}
 
 		// Check if URL resolves to an ActivityPub actor.
-		$actor = \Activitypub\get_remote_metadata_by_actor( $url );
+		$actor = Remote_Actors::fetch_by_various( $url );
 
-		return ! \is_wp_error( $actor ) && ! empty( $actor );
+		return ! \is_wp_error( $actor );
 	}
 
 	/**
@@ -71,37 +74,8 @@ class ActivityPub extends Adapter {
 			return false;
 		}
 
-		$actor = $this->get_actor_by_url( $url );
-		return ! empty( $actor );
-	}
-
-	/**
-	 * Get an actor post by URL.
-	 *
-	 * @param string $url The actor URL.
-	 * @return \WP_Post|null The actor post or null.
-	 */
-	protected function get_actor_by_url( $url ) {
-		$actors = \get_posts(
-			array(
-				'post_type'      => \Activitypub\Collection\Remote_Actors::POST_TYPE,
-				'post_status'    => 'publish',
-				'posts_per_page' => 1,
-				'meta_query'     => array(
-					'relation' => 'OR',
-					array(
-						'key'   => '_activitypub_actor_id',
-						'value' => $url,
-					),
-					array(
-						'key'   => '_activitypub_canonical_url',
-						'value' => $url,
-					),
-				),
-			)
-		);
-
-		return ! empty( $actors ) ? $actors[0] : null;
+		$actor = Remote_Actors::get_by_uri( $url );
+		return ! \is_wp_error( $actor );
 	}
 
 	/**
@@ -143,33 +117,29 @@ class ActivityPub extends Adapter {
 			return $result;
 		}
 
-		$limit = isset( $args['limit'] ) ? \absint( $args['limit'] ) : 20;
+		$limit   = isset( $args['limit'] ) ? \absint( $args['limit'] ) : 20;
+		$user_id = \get_current_user_id();
 
-		// Get posts from inbox.
 		$query_args = array(
-			'post_type'      => \Activitypub\Collection\Inbox::POST_TYPE,
+			'post_type'      => Posts::POST_TYPE,
 			'post_status'    => 'publish',
 			'posts_per_page' => $limit,
 			'orderby'        => 'date',
 			'order'          => 'DESC',
+			'meta_key'       => '_activitypub_user_id', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+			'meta_value'     => $user_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 		);
 
-		// Handle cursor-based pagination.
 		if ( ! empty( $args['after'] ) ) {
 			$query_args['date_query'] = array(
-				array(
-					'before' => $args['after'],
-				),
+				array( 'before' => $args['after'] ),
 			);
 		}
 
 		if ( ! empty( $args['before'] ) ) {
 			$query_args['date_query'] = array(
-				array(
-					'after' => $args['before'],
-				),
+				array( 'after' => $args['before'] ),
 			);
-			$query_args['order'] = 'ASC';
 		}
 
 		$query = new \WP_Query( $query_args );
@@ -202,42 +172,34 @@ class ActivityPub extends Adapter {
 			return $result;
 		}
 
-		// Get followed actors.
-		$actors = \get_posts(
-			array(
-				'post_type'      => \Activitypub\Collection\Remote_Actors::POST_TYPE,
-				'post_status'    => 'publish',
-				'posts_per_page' => -1,
-				'meta_query'     => array(
-					array(
-						'key'     => \Activitypub\Collection\Following::FOLLOWING_META_KEY,
-						'value'   => $user_id,
-						'compare' => '=',
-					),
-				),
-			)
-		);
+		// Get followed actors using the Following collection.
+		$actors = Following::get_many( $user_id );
 
-		foreach ( $actors as $actor ) {
-			$actor_id = \get_post_meta( $actor->ID, '_activitypub_actor_id', true );
+		foreach ( $actors as $actor_post ) {
+			$actor = Remote_Actors::get_actor( $actor_post );
+
+			if ( \is_wp_error( $actor ) ) {
+				continue;
+			}
 
 			$feed = array(
 				'type' => 'feed',
-				'url'  => $actor_id ?: $actor->guid,
-				'_id'  => \md5( $actor_id ?: $actor->guid ),
+				'url'  => $actor->get_id(),
+				'_id'  => \md5( $actor->get_id() ),
 			);
 
-			if ( $actor->post_title ) {
-				$feed['name'] = $actor->post_title;
+			$name = $actor->get_name() ?: $actor->get_preferred_username();
+			if ( $name ) {
+				$feed['name'] = $name;
 			}
 
-			$icon = \get_post_meta( $actor->ID, '_activitypub_icon', true );
+			$icon = $actor->get_icon();
 			if ( $icon ) {
 				$feed['photo'] = \is_array( $icon ) ? ( $icon['url'] ?? '' ) : $icon;
 			}
 
 			$result[] = $feed;
-		}
+		}//end foreach
 
 		return $result;
 	}
@@ -256,21 +218,19 @@ class ActivityPub extends Adapter {
 			return $result;
 		}
 
-		// Check if we can handle this URL.
+		// Check if we can handle this URL. Pass to next adapter if not.
 		if ( ! $this->can_handle_url( $url ) ) {
-			return $result; // Pass to next adapter.
+			return $result;
 		}
 
 		// Use ActivityPub follow function.
-		if ( \function_exists( '\Activitypub\follow' ) ) {
-			$follow_result = \Activitypub\follow( $url, $user_id );
+		$follow_result = \Activitypub\follow( $url, $user_id );
 
-			if ( ! \is_wp_error( $follow_result ) ) {
-				return array(
-					'type' => 'feed',
-					'url'  => $url,
-				);
-			}
+		if ( ! \is_wp_error( $follow_result ) ) {
+			return array(
+				'type' => 'feed',
+				'url'  => $url,
+			);
 		}
 
 		return $result;
@@ -290,97 +250,85 @@ class ActivityPub extends Adapter {
 			return $result;
 		}
 
-		// Check if we own this feed.
-		$actor = $this->get_actor_by_url( $url );
+		// Check if we own this feed. Pass to next adapter if not.
+		$actor = Remote_Actors::get_by_uri( $url );
 
-		if ( ! $actor ) {
-			return $result; // Pass to next adapter.
+		if ( \is_wp_error( $actor ) ) {
+			return $result;
 		}
 
 		// Use ActivityPub unfollow function.
-		if ( \function_exists( '\Activitypub\unfollow' ) ) {
-			$unfollow_result = \Activitypub\unfollow( $actor->ID, $user_id );
+		$unfollow_result = \Activitypub\unfollow( $actor->ID, $user_id );
 
-			if ( ! \is_wp_error( $unfollow_result ) ) {
-				return true;
-			}
+		if ( ! \is_wp_error( $unfollow_result ) ) {
+			return true;
 		}
 
 		return false;
 	}
 
 	/**
-	 * Convert an inbox post to jf2 format.
+	 * Convert an ap_post to jf2 format.
 	 *
 	 * @param \WP_Post $post The post object.
 	 * @return array|null jf2 formatted entry or null.
 	 */
 	protected function post_to_jf2( $post ) {
-		$activity = \get_post_meta( $post->ID, '_activitypub_activity', true );
-
-		if ( empty( $activity ) ) {
-			return null;
-		}
-
-		$object = $activity['object'] ?? $activity;
-
 		$jf2 = array(
 			'type'      => 'entry',
 			'_id'       => (string) $post->ID,
 			'published' => \get_the_date( 'c', $post ),
+			'url'       => $post->guid,
 		);
 
-		// URL.
-		if ( ! empty( $object['url'] ) ) {
-			$jf2['url'] = \is_array( $object['url'] ) ? $object['url'][0] : $object['url'];
-		} elseif ( ! empty( $object['id'] ) ) {
-			$jf2['url'] = $object['id'];
-		}
-
 		// Name/Title.
-		if ( ! empty( $object['name'] ) ) {
-			$jf2['name'] = $object['name'];
+		if ( ! empty( $post->post_title ) ) {
+			$jf2['name'] = $post->post_title;
 		}
 
 		// Content.
-		if ( ! empty( $object['content'] ) ) {
+		if ( ! empty( $post->post_content ) ) {
 			$jf2['content'] = array(
-				'html' => $object['content'],
-				'text' => \wp_strip_all_tags( $object['content'] ),
+				'html' => $post->post_content,
+				'text' => \wp_strip_all_tags( $post->post_content ),
 			);
-		} elseif ( ! empty( $object['summary'] ) ) {
+		} elseif ( ! empty( $post->post_excerpt ) ) {
 			$jf2['content'] = array(
-				'text' => $object['summary'],
+				'text' => $post->post_excerpt,
 			);
 		}
 
-		// Author.
-		$actor = $object['attributedTo'] ?? ( $activity['actor'] ?? null );
-		if ( $actor ) {
-			$actor_data = \is_string( $actor )
-				? \Activitypub\get_remote_metadata_by_actor( $actor )
-				: $actor;
+		// Author - get from the linked remote actor.
+		$remote_actor_id = \get_post_meta( $post->ID, '_activitypub_remote_actor_id', true );
+		if ( $remote_actor_id ) {
+			$actor = Remote_Actors::get_actor( $remote_actor_id );
 
-			if ( ! \is_wp_error( $actor_data ) && ! empty( $actor_data ) ) {
+			if ( ! \is_wp_error( $actor ) ) {
 				$jf2['author'] = array(
 					'type' => 'card',
-					'name' => $actor_data['name'] ?? ( $actor_data['preferredUsername'] ?? '' ),
-					'url'  => $actor_data['url'] ?? ( $actor_data['id'] ?? '' ),
+					'name' => $actor->get_name() ?: $actor->get_preferred_username(),
+					'url'  => $actor->get_url() ?: $actor->get_id(),
 				);
 
-				if ( ! empty( $actor_data['icon'] ) ) {
-					$icon = $actor_data['icon'];
+				$icon = $actor->get_icon();
+				if ( $icon ) {
 					$jf2['author']['photo'] = \is_array( $icon ) ? ( $icon['url'] ?? '' ) : $icon;
 				}
 			}
 		}
 
-		// Images.
-		if ( ! empty( $object['attachment'] ) ) {
-			foreach ( $object['attachment'] as $attachment ) {
-				if ( isset( $attachment['mediaType'] ) && \str_starts_with( $attachment['mediaType'], 'image/' ) ) {
-					$jf2['photo'][] = $attachment['url'] ?? '';
-				}
+		// Images from attachments.
+		$attachments = \get_children(
+			array(
+				'post_parent' => $post->ID,
+				'post_type'   => 'attachment',
+				'post_status' => 'inherit',
+			)
+		);
+
+		foreach ( $attachments as $attachment ) {
+			if ( \str_starts_with( $attachment->post_mime_type, 'image/' ) ) {
+				$jf2['photo'][] = \wp_get_attachment_url( $attachment->ID );
 			}
 		}
 

@@ -145,19 +145,19 @@ class Friends extends Adapter {
 			'name' => \__( 'Home', 'microsub' ),
 		);
 
-		// Get friend lists as channels.
-		$friend_lists = \get_terms(
+		// Get friend tags as channels.
+		$friend_tags = \get_terms(
 			array(
-				'taxonomy'   => 'friend-list',
+				'taxonomy'   => 'friend_tag',
 				'hide_empty' => false,
 			)
 		);
 
-		if ( ! \is_wp_error( $friend_lists ) && ! empty( $friend_lists ) ) {
-			foreach ( $friend_lists as $list ) {
+		if ( ! \is_wp_error( $friend_tags ) && ! empty( $friend_tags ) ) {
+			foreach ( $friend_tags as $tag ) {
 				$channels[] = array(
-					'uid'  => 'list-' . $list->slug,
-					'name' => $list->name,
+					'uid'  => 'tag-' . $tag->slug,
+					'name' => $tag->name,
 				);
 			}
 		}
@@ -233,16 +233,16 @@ class Friends extends Adapter {
 			return $result;
 		}
 
-		$term = \wp_insert_term( $name, 'friend-list' );
+		$term = \wp_insert_term( $name, 'friend_tag' );
 
 		if ( \is_wp_error( $term ) ) {
 			return $result;
 		}
 
-		$term_data = \get_term( $term['term_id'], 'friend-list' );
+		$term_data = \get_term( $term['term_id'], 'friend_tag' );
 
 		return array(
-			'uid'  => 'list-' . $term_data->slug,
+			'uid'  => 'tag-' . $term_data->slug,
 			'name' => $term_data->name,
 		);
 	}
@@ -262,18 +262,18 @@ class Friends extends Adapter {
 		}
 
 		// Only handle list channels.
-		if ( ! str_starts_with( $uid, 'list-' ) ) {
+		if ( ! str_starts_with( $uid, 'tag-' ) ) {
 			return $result;
 		}
 
-		$slug = substr( $uid, 5 );
-		$term = \get_term_by( 'slug', $slug, 'friend-list' );
+		$slug = substr( $uid, 4 );
+		$term = \get_term_by( 'slug', $slug, 'friend_tag' );
 
 		if ( ! $term ) {
 			return $result;
 		}
 
-		$updated = \wp_update_term( $term->term_id, 'friend-list', array( 'name' => $name ) );
+		$updated = \wp_update_term( $term->term_id, 'friend_tag', array( 'name' => $name ) );
 
 		if ( \is_wp_error( $updated ) ) {
 			return $result;
@@ -299,18 +299,18 @@ class Friends extends Adapter {
 		}
 
 		// Only handle list channels.
-		if ( ! str_starts_with( $uid, 'list-' ) ) {
+		if ( ! str_starts_with( $uid, 'tag-' ) ) {
 			return $result;
 		}
 
-		$slug = substr( $uid, 5 );
-		$term = \get_term_by( 'slug', $slug, 'friend-list' );
+		$slug = substr( $uid, 4 );
+		$term = \get_term_by( 'slug', $slug, 'friend_tag' );
 
 		if ( ! $term ) {
 			return $result;
 		}
 
-		$deleted = \wp_delete_term( $term->term_id, 'friend-list' );
+		$deleted = \wp_delete_term( $term->term_id, 'friend_tag' );
 
 		return ! \is_wp_error( $deleted ) && $deleted;
 	}
@@ -344,16 +344,16 @@ class Friends extends Adapter {
 		);
 
 		// Filter by friend list.
-		if ( str_starts_with( $channel, 'list-' ) ) {
-			$slug = substr( $channel, 5 );
-			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+		if ( str_starts_with( $channel, 'tag-' ) ) {
+			$slug = substr( $channel, 4 );
+			$term = \get_term_by( 'slug', $slug, 'friend_tag' );
 
 			if ( ! $term ) {
 				return $result;
 			}
 
 			// Get friend users in this list.
-			$friend_users = \get_objects_in_term( $term->term_id, 'friend-list' );
+			$friend_users = \get_objects_in_term( $term->term_id, 'friend_tag' );
 
 			if ( empty( $friend_users ) ) {
 				return $result;
@@ -468,15 +468,15 @@ class Friends extends Adapter {
 			return $query->get_results();
 		}
 
-		if ( str_starts_with( $channel, 'list-' ) ) {
-			$slug = substr( $channel, 5 );
-			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+		if ( str_starts_with( $channel, 'tag-' ) ) {
+			$slug = substr( $channel, 4 );
+			$term = \get_term_by( 'slug', $slug, 'friend_tag' );
 
 			if ( ! $term ) {
 				return array();
 			}
 
-			$user_ids = \get_objects_in_term( $term->term_id, 'friend-list' );
+			$user_ids = \get_objects_in_term( $term->term_id, 'friend_tag' );
 
 			if ( empty( $user_ids ) ) {
 				return array();
@@ -522,12 +522,12 @@ class Friends extends Adapter {
 		}
 
 		// If subscribing to a specific list channel, add to that list.
-		if ( str_starts_with( $channel, 'list-' ) ) {
-			$slug = substr( $channel, 5 );
-			$term = \get_term_by( 'slug', $slug, 'friend-list' );
+		if ( str_starts_with( $channel, 'tag-' ) ) {
+			$slug = substr( $channel, 4 );
+			$term = \get_term_by( 'slug', $slug, 'friend_tag' );
 
 			if ( $term ) {
-				\wp_set_object_terms( $friend_user->ID, $term->term_id, 'friend-list', true );
+				\wp_set_object_terms( $friend_user->ID, $term->term_id, 'friend_tag', true );
 			}
 		}
 

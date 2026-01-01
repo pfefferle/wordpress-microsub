@@ -176,15 +176,30 @@ class Friends extends Adapter {
 	}
 
 	/**
-	 * Get post formats supported by Friends plugin.
+	 * Get post formats supported by the current theme.
 	 *
 	 * @return array Associative array of format slug => format name.
 	 */
 	protected function get_post_formats() {
-		// Use WordPress core format strings with 'standard' added.
+		// Standard is always available.
 		$formats = array( 'standard' => \__( 'Standard', 'microsub' ) );
 
-		return \array_merge( $formats, \get_post_format_strings() );
+		// Get formats supported by the theme.
+		$theme_formats = \get_theme_support( 'post-formats' );
+
+		if ( empty( $theme_formats ) || empty( $theme_formats[0] ) ) {
+			return $formats;
+		}
+
+		$all_formats = \get_post_format_strings();
+
+		foreach ( $theme_formats[0] as $format ) {
+			if ( isset( $all_formats[ $format ] ) ) {
+				$formats[ $format ] = $all_formats[ $format ];
+			}
+		}
+
+		return $formats;
 	}
 
 	/**

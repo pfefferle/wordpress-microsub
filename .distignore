@@ -11,28 +11,8 @@ phpcs.xml
 phpunit.xml.dist
 bin
 tests
-
-# Dependencies
-vendor
-node_modules
+docs
 
 # Package managers
 composer.json
-composer.lock
 package.json
-package-lock.json
-
-# IDE
-.idea
-.vscode
-*.sublime-project
-*.sublime-workspace
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Build artifacts
-*.log
-*.cache
-.phpunit.result.cache

@@ -167,7 +167,7 @@ class Friends extends Adapter {
 
 		foreach ( $post_formats as $format => $name ) {
 			$channels[] = array(
-				'uid'  => 'format-' . $format,
+				'uid'  => 'friends-' . $format,
 				'name' => $name,
 			);
 		}
@@ -344,12 +344,13 @@ class Friends extends Adapter {
 			}
 
 			$query_args['author__in'] = $friend_users;
-		} elseif ( str_starts_with( $channel, 'format-' ) ) {
+		} elseif ( str_starts_with( $channel, 'friends-' ) ) {
 			// Filter by post format.
-			$format = substr( $channel, 7 );
+			$format = substr( $channel, 8 );
 
 			if ( 'standard' === $format ) {
 				// Standard = posts without any post format.
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 				$query_args['tax_query'] = array(
 					array(
 						'taxonomy' => 'post_format',
@@ -357,6 +358,7 @@ class Friends extends Adapter {
 					),
 				);
 			} else {
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
 				$query_args['tax_query'] = array(
 					array(
 						'taxonomy' => 'post_format',
@@ -368,7 +370,7 @@ class Friends extends Adapter {
 		} elseif ( 'home' !== $channel ) {
 			// Unknown channel, pass to next adapter.
 			return $result;
-		}
+		}//end if
 
 		// Handle cursor-based pagination.
 		if ( ! empty( $args['after'] ) ) {
@@ -385,7 +387,7 @@ class Friends extends Adapter {
 					'after' => $args['before'],
 				),
 			);
-			$query_args['order'] = 'ASC';
+			$query_args['order']      = 'ASC';
 		}
 
 		$query = new \WP_Query( $query_args );
@@ -414,7 +416,8 @@ class Friends extends Adapter {
 		$friend_users = $this->get_friend_users_for_channel( $channel );
 
 		if ( null === $friend_users ) {
-			return $result; // Unknown channel.
+			return $result;
+			// Unknown channel.
 		}
 
 		foreach ( $friend_users as $friend_user ) {
@@ -444,8 +447,8 @@ class Friends extends Adapter {
 				}
 
 				$result[] = $feed;
-			}
-		}
+			}//end foreach
+		}//end foreach
 
 		return $result;
 	}
@@ -458,7 +461,7 @@ class Friends extends Adapter {
 	 */
 	protected function get_friend_users_for_channel( $channel ) {
 		// For home, notifications, and format channels, return all friends.
-		if ( 'home' === $channel || 'notifications' === $channel || str_starts_with( $channel, 'format-' ) ) {
+		if ( 'home' === $channel || 'notifications' === $channel || str_starts_with( $channel, 'friends-' ) ) {
 			$query = \Friends\User_Query::all_friends_subscriptions();
 			return $query->get_results();
 		}
@@ -485,9 +488,10 @@ class Friends extends Adapter {
 				}
 			}
 			return $users;
-		}
+		}//end if
 
-		return null; // Unknown channel.
+		return null;
+		// Unknown channel.
 	}
 
 	/**
@@ -506,7 +510,8 @@ class Friends extends Adapter {
 
 		// Check if we can handle this URL.
 		if ( ! $this->can_handle_url( $url ) ) {
-			return $result; // Pass to next adapter.
+			return $result;
+			// Pass to next adapter.
 		}
 
 		// Use Friends plugin to subscribe to the URL.
@@ -550,7 +555,8 @@ class Friends extends Adapter {
 		$feed = $this->get_feed_by_url( $url );
 
 		if ( ! $feed ) {
-			return $result; // Pass to next adapter.
+			return $result;
+			// Pass to next adapter.
 		}
 
 		$friend_user = $feed->get_friend_user();

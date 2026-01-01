@@ -102,6 +102,34 @@ class WordPress extends Adapter {
 	}
 
 	/**
+	 * Follow a URL (not supported for core feeds).
+	 *
+	 * @param array|null $result  Current result or null.
+	 * @param string     $channel Channel UID.
+	 * @param string     $url     URL to follow.
+	 * @param int        $user_id The user ID.
+	 * @return array|null
+	 */
+	public function follow( $result, $channel, $url, $user_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		// Read-only adapter; pass through.
+		return $result;
+	}
+
+	/**
+	 * Unfollow a URL (not supported for core feeds).
+	 *
+	 * @param bool|null $result  Current result or null.
+	 * @param string    $channel Channel UID.
+	 * @param string    $url     URL to unfollow.
+	 * @param int       $user_id The user ID.
+	 * @return bool|null
+	 */
+	public function unfollow( $result, $channel, $url, $user_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		// Read-only adapter; pass through.
+		return $result;
+	}
+
+	/**
 	 * Read WordPress.org news feed items.
 	 *
 	 * @param int $limit Maximum items to return.

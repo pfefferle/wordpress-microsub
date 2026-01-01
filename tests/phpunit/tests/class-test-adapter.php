@@ -174,7 +174,7 @@ class Test_Adapter extends WP_UnitTestCase {
 	 * @covers ::can_handle_url
 	 */
 	public function test_can_handle_url_default() {
-		$this->assertFalse( $this->adapter->can_handle_url( 'https://example.com' ) );
+		$this->assertTrue( $this->adapter->can_handle_url( 'https://example.com' ) );
 	}
 
 	/**

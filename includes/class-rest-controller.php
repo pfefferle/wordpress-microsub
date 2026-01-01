@@ -405,11 +405,14 @@ class Rest_Controller extends \WP_REST_Controller {
 
 		// Sort items by published date (newest first).
 		$items = $result['items'];
-		\usort( $items, function ( $a, $b ) {
-			$date_a = isset( $a['published'] ) ? \strtotime( $a['published'] ) : 0;
-			$date_b = isset( $b['published'] ) ? \strtotime( $b['published'] ) : 0;
-			return $date_b - $date_a;
-		} );
+		\usort(
+			$items,
+			function ( $a, $b ) {
+				$date_a = isset( $a['published'] ) ? \strtotime( $a['published'] ) : 0;
+				$date_b = isset( $b['published'] ) ? \strtotime( $b['published'] ) : 0;
+				return $date_b - $date_a;
+			}
+		);
 
 		// Apply limit.
 		$items = \array_slice( $items, 0, $args['limit'] );

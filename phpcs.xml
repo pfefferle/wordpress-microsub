@@ -21,5 +21,28 @@
 	<rule ref="WordPress">
 		<exclude name="Universal.Operators.DisallowShortTernary" />
 	</rule>
-	<rule ref="VariableAnalysis"/>
+	<rule ref="VariableAnalysis">
+		<exclude-pattern>*/includes/class-adapter.php</exclude-pattern>
+		<exclude-pattern>*/includes/adapters/*</exclude-pattern>
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude-pattern>*/includes/class-adapter.php</exclude-pattern>
+		<exclude-pattern>*/includes/adapters/*</exclude-pattern>
+	</rule>
+	<rule ref="Generic.Formatting.MultipleStatementAlignment">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Generic.Files.OneObjectStructurePerFile">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.Commenting">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Security.EscapeOutput">
+		<exclude-pattern>*/tests/*</exclude-pattern>
+	</rule>
 </ruleset>

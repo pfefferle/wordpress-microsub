@@ -52,6 +52,10 @@ The endpoint is available at `/wp-json/microsub/1.0/endpoint`. Discovery is auto
 
 See the [adapter documentation](docs/adapters.md) for a complete guide on creating custom adapters.
 
+### How do I set up a local development environment?
+
+See the [development documentation](docs/development.md) for setup instructions, testing, and code quality tools.
+
 ### What scopes are required?
 
 - `read` - Required for timeline, search, and preview actions
@@ -85,37 +89,6 @@ Follow the normal instructions for [installing WordPress plugins](https://develo
 1. Download the plugin from [GitHub](https://github.com/pfefferle/wordpress-microsub)
 2. Upload the `microsub` folder to `/wp-content/plugins/`
 3. Activate the plugin through the Plugins menu
-
-## Documentation
-
-- [Creating Custom Adapters](docs/adapters.md) - Guide for integrating reader plugins with Microsub.
-
-## Development
-
-### Local Development with wp-env
-
-This plugin includes a [wp-env](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-env/) configuration for local development.
-
-```bash
-npm install
-npm start
-```
-
-The local environment will be available at http://localhost:8686.
-
-### Running Tests
-
-```bash
-composer install
-composer test
-```
-
-### Linting
-
-```bash
-composer lint
-composer lint:fix
-```
 
 ## Upgrade Notice
 

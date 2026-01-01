@@ -94,6 +94,12 @@ class Microsub {
 			$adapter = new Adapters\Friends();
 			$adapter->register();
 		}
+
+		// Register ActivityPub adapter if ActivityPub plugin is installed.
+		if ( \defined( 'ACTIVITYPUB_PLUGIN_VERSION' ) ) {
+			$adapter = new Adapters\ActivityPub();
+			$adapter->register();
+		}
 	}
 
 	/**

@@ -7,6 +7,10 @@
 
 namespace Microsub;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Microsub Class.
  *

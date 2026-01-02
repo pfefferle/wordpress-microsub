@@ -1,10 +1,11 @@
 # Dependencies
-/vendor/
-/node_modules/
+/vendor
+/node_modules
 
 # IDE
-.idea/
-.vscode/
+.idea
+.vscode
+.claude
 *.sublime-project
 *.sublime-workspace
 

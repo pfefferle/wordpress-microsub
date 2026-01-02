@@ -7,6 +7,10 @@
 
 namespace Microsub\Adapters;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 use Microsub\Adapter;
 
 /**

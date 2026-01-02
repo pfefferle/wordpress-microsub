@@ -5,6 +5,10 @@
  * @package Microsub
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 if ( ! function_exists( 'str_starts_with' ) ) {
 	/**
 	 * Polyfill for str_starts_with for PHP < 8.0.

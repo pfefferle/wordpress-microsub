@@ -19,6 +19,10 @@
 
 namespace Microsub;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 \define( 'MICROSUB_VERSION', '1.0.0' );
 
 // Plugin related constants.

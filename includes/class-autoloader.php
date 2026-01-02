@@ -7,6 +7,10 @@
 
 namespace Microsub;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * An Autoloader that respects WordPress's filename standards.
  */

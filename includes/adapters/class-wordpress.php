@@ -40,7 +40,7 @@ class WordPress extends Adapter {
 	 *
 	 * @var string
 	 */
-	protected $id = 'wordpress';
+	protected $id = 'WordPress';
 
 	/**
 	 * Adapter name.
@@ -277,7 +277,7 @@ class WordPress extends Adapter {
 			$query_args['date_query'] = array(
 				array( 'after' => $args['before'] ),
 			);
-			$query_args['order'] = 'ASC';
+			$query_args['order']      = 'ASC';
 		}
 
 		$query = new \WP_Query( $query_args );
@@ -306,7 +306,7 @@ class WordPress extends Adapter {
 		$items     = \get_transient( $cache_key );
 
 		if ( false === $items ) {
-			$items = $this->get_news_items( $limit * 2 ); // Fetch more for cache.
+			$items          = $this->get_news_items( $limit * 2 ); // Fetch more for cache.
 			$cache_duration = $this->get_cache_duration( 'news' );
 			\set_transient( $cache_key, $items, $cache_duration );
 		}
@@ -326,7 +326,7 @@ class WordPress extends Adapter {
 		$items     = \get_transient( $cache_key );
 
 		if ( false === $items ) {
-			$items = $this->get_events_items( $limit * 2 ); // Fetch more for cache.
+			$items          = $this->get_events_items( $limit * 2 ); // Fetch more for cache.
 			$cache_duration = $this->get_cache_duration( 'events' );
 			\set_transient( $cache_key, $items, $cache_duration );
 		}
@@ -347,7 +347,7 @@ class WordPress extends Adapter {
 		$items     = \get_transient( $cache_key );
 
 		if ( false === $items ) {
-			$items = $this->get_feed_items( $feed_url, $limit * 2, $channel );
+			$items          = $this->get_feed_items( $feed_url, $limit * 2, $channel );
 			$cache_duration = $this->get_cache_duration( 'feed' );
 			\set_transient( $cache_key, $items, $cache_duration );
 		}

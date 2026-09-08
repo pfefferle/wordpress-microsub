@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use Microsub\Adapter;
 use Activitypub\Collection\Following;
 use Activitypub\Collection\Remote_Actors;
-use Activitypub\Collection\Posts;
+use Activitypub\Collection\Remote_Posts;
 
 /**
  * ActivityPub Adapter
@@ -129,7 +129,7 @@ class ActivityPub extends Adapter {
 				AND p.post_type = %s
 				AND pm.meta_key = '_activitypub_user_id'
 				AND pm.meta_value = %s",
-				Posts::POST_TYPE,
+				Remote_Posts::POST_TYPE,
 				$user_id
 			)
 		);
@@ -171,7 +171,7 @@ class ActivityPub extends Adapter {
 		$user_id          = \get_current_user_id();
 
 		$query_args = array(
-			'post_type'      => Posts::POST_TYPE,
+			'post_type'      => Remote_Posts::POST_TYPE,
 			'post_status'    => 'publish',
 			'posts_per_page' => $limit,
 			'orderby'        => 'date',

@@ -1,5 +1,5 @@
 {
-	"name": "pfefferle/wordpress-microsub",
+	"name": "indieweb/wordpress-microsub",
 	"description": "A Microsub server reference implementation for WordPress with adapter support for reader plugins.",
 	"type": "wordpress-plugin",
 	"require": {
